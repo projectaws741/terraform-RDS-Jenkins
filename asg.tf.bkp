@@ -1,0 +1,142 @@
+resource "aws_autoscaling_group" "POSTGRES-ASG" {
+  name = "POSTGRES-ASG"
+  max_size = 1
+  min_size = 1
+  desired_capacity = 1
+  force_delete = true
+  availability_zones = ["us-east-1a","us-east-1b"]
+  launch_template {
+    name = aws_launch_template.POSTGRES-TEMPLATE.name
+  }
+  depends_on = [aws_launch_template.POSTGRES-TEMPLATE]
+}
+resource "aws_launch_template" "POSTGRES-TEMPLATE" {
+  name            = "ecs-launch-template-${formatdate("20060102150405", timestamp())}"
+  image_id        = "ami-0e2c8caa4b6378d8c"
+  instance_type   = "t2.micro"
+  key_name        = "Devops" # Replace with your keypair name
+  user_data = base64encode(<<-EOF
+    #!/bin/bash
+    curl -fsSL https://get.docker.com -o install-docker.sh
+    sudo sh /root/install-docker.sh
+    wget https://s3.us-east-1.amazonaws.com/amazon-ecs-agent-us-east-1/amazon-ecs-init-latest.amd64.deb
+    sudo dpkg -i /root/amazon-ecs-init-latest.amd64.deb
+    systemctl start ecs
+    # Echo ECS cluster name to the ecs.config file
+    echo "ECS_CLUSTER=POSTGRES-DB" > /etc/ecs/ecs.config
+    # Enable ecs service to start on boot
+    systemctl restart ecs
+  EOF
+  )
+  iam_instance_profile {
+    name = "Admin"
+  }
+  depends_on = [aws_ecs_cluster.POSTGRES-DB]
+}
+
+resource "aws_ecs_cluster" "POSTGRES-DB" {
+  name = "POSTGRES-DB"
+}
+resource "aws_ecs_task_definition" "POSTGRES-DB-TD" {
+  container_definitions = jsonencode([
+    {
+      name        = "DB"
+      image       = "projectaws/pythonapp:v1"
+      cpu         = 1
+      memory      = 256
+#       environment = [
+#         {
+#           name = "POSTGRES_USER"
+#           value = "postgres"
+#         },
+#         {
+#           name = "POSTGRES_PASSWORD"
+#           value = "postgres"
+#         },
+#         {
+#           name = "POSTGRES_DB"
+#           value = "postgres"
+#         }]
+      portMappings = [
+        {
+          containerPort = 5000
+          hostPort      = 5000
+        }
+      ]
+    }
+  ])
+  family = "DB"
+}
+resource "aws_ecs_service" "postgres-db" {
+  name = "postgres-service"
+  cluster = aws_ecs_cluster.POSTGRES-DB.id
+  task_definition = aws_ecs_task_definition.POSTGRES-DB-TD.arn
+  desired_count = 1
+#   iam_role = aws_iam_role.ecstaskRole1.arn
+#   load_balancer {
+#     target_group_arn = aws_lb_target_group.DB-TG.arn
+#     container_name = "DB"
+#     container_port = 5432
+#   }
+  depends_on = [aws_ecs_cluster.POSTGRES-DB,aws_ecs_task_definition.POSTGRES-DB-TD,aws_db_instance.postgres]
+}
+# resource "aws_lb" "postgres-DB" {
+#   name = "postgres-nlb"
+#   internal = false
+#   load_balancer_type = "network"
+#   subnets = ["subnet-0cb87bdf2f4e30ee0" , "subnet-076ce450d3950a6cf"]
+#   enable_deletion_protection = false
+#   security_groups = ["sg-0dfd03ecde402fb4b"]
+# }
+# resource "aws_lb_target_group" "DB-TG" {
+#   name = "POSTGRES-DB"
+#   port = 5432
+#   protocol = "TCP"
+#   vpc_id = "vpc-0a12d98dc947f3f24"
+#   target_type = "instance"
+#   health_check {
+#     protocol = "TCP"
+#   }
+# }
+# resource "aws_lb_listener" "PG-Listner" {
+#   load_balancer_arn = aws_lb.postgres-DB.arn
+#   port = 5432
+#   protocol = "TCP"
+#   default_action {
+#     type = "forward"
+#     target_group_arn = aws_lb_target_group.DB-TG.arn
+#   }
+# }
+# resource "aws_iam_role" "ecstaskRole1" {
+#   name = "ecstaskRole1"
+#
+#   assume_role_policy = jsonencode({
+#     Version = "2012-10-17",
+#     Statement = [
+#       {
+#         Effect = "Allow"
+#         Principal = {
+#           Service = "ecs.amazonaws.com"
+#         }
+#         Action = "sts:AssumeRole"
+#       }
+#     ]
+#   })
+# }
+#
+# resource "aws_iam_role_policy_attachment" "ecstaskRole_policy" {
+#   role       = aws_iam_role.ecstaskRole1.name
+#   policy_arn = "arn:aws:iam::aws:policy/service-role/AmazonEC2ContainerServiceRole"
+# }
+# resource "aws_route53_record" "nlb_record" {
+#   zone_id = "Z0490899UJQTB9CQ3E30"
+#   name = "test.devopslearning.me"
+#   type = "A"
+# #   ttl = 300
+#   alias {
+#     evaluate_target_health = false
+#     name                   = aws_lb.postgres-DB.dns_name
+#     zone_id                = aws_lb.postgres-DB.zone_id
+#   }
+#   depends_on = [aws_lb.postgres-DB]
+# }
