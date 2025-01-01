@@ -1,0 +1,62 @@
+pipeline {
+    agent any
+    environment {
+        TF_BACKEND_REGION = 'us-east-1'
+    }
+    stages
+    {
+        stage('Fetch AWS Creds')
+        {
+            steps
+            {
+                script
+                {
+                    def accessKey = sh(
+                        script: "aws ssm get-parameter --name \'ACCESS_KEY_ID\' --with-decryption --query \'Parameter.Value\' --output text",
+                        returnStdout: true
+                        ).trim()
+                    def secretKey = sh(
+                        script: "aws ssm get-parameter --name \'SECRET_ACCESS_KEY\' --with-decryption --query \'Parameter.Value\' --output text",
+                        returnStdout: true
+                        ).trim()
+                    env.AWS_ACCESS_KEY_ID = accessKey
+                    env.AWS_SECRET_ACCESS_KEY = secretKey
+                }
+            }
+        }
+        stage('Git Download') {
+            steps {
+                script {
+                    git branch: 'main', url: 'https://github.com/projectaws741/terraform-RDS-Jenkins.git'
+                }
+            }
+        }
+        stage('Terrafrom init')
+        {
+            steps
+            {
+                script
+                {
+                    sh """
+                        terraform init \
+                        -backend-config="region=${env.TF_BACKEND_REGION}"
+                    """
+                }
+            }
+        }
+        stage('Terraform plan')
+        {
+            steps
+            {
+                script
+                {
+                    sh """
+                        terraform plan \
+                        -var "AWS_ACCESS_KEY_ID=${env.AWS_ACCESS_KEY_ID}" \
+                        -var "AWS_SECRET_ACCESS_KEY=${env.AWS_SECRET_ACCESS_KEY}"
+                    """
+                }
+            }
+        }
+    }
+}
