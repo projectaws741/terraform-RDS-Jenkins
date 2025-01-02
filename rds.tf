@@ -11,7 +11,7 @@ resource "aws_db_instance" "postgres" {
   password               = "KrishnaKittu123" # Strong password (use secrets manager)
 #   parameter_group_name   = "default.postgres15" # Default parameter group for the version
   publicly_accessible    = true
-  availability_zone = "us-east-1a"
+  availability_zone = "ap-south-1a"
   skip_final_snapshot = true
 
 
