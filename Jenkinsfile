@@ -3,7 +3,7 @@ pipeline {
     environment {
         AWS_ACCESS_KEY_ID = credentials('AWS_ACCESS_KEY_ID')
         AWS_SECRET_ACCESS_KEY = credentials('AWS_SECRET_ACCESS_KEY')
-        TF_BACKEND_REGION = 'us-east-1'
+        TF_BACKEND_REGION = 'ap-south-1'
     }
     stages {
         stage('Initialize') {
